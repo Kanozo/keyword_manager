@@ -20,8 +20,13 @@ jobs:
         with:
           flutter-version: '3.22.0'
 
+      - name: Regenerate platform project (fix Gradle)
+        run: |
+          flutter create --platforms android --project-name keyword_manager .
+          # Esto regenera la carpeta android/ sin tocar lib/, pubspec.yaml, etc.
+
       - name: Accept Android licenses
-        run: yes | sdkmanager --licenses || true   # Acepta todas las licencias
+        run: yes | sdkmanager --licenses || true
 
       - name: Install dependencies
         run: flutter pub get
