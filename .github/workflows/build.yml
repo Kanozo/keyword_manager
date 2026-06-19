@@ -31,15 +31,25 @@ jobs:
 
       - name: Force compileSdk 36, targetSdk 36, minSdk 23
         run: |
-          # Reemplazar las líneas completas que contengan estas propiedades
           sed -i 's/^.*compileSdkVersion.*/compileSdkVersion 36/' android/app/build.gradle
           sed -i 's/^.*targetSdkVersion.*/targetSdkVersion 36/' android/app/build.gradle
           sed -i 's/^.*minSdkVersion.*/minSdkVersion 23/' android/app/build.gradle
-
-          # Si después del reemplazo queda alguna línea usando flutter.compileSdkVersion, la eliminamos
           sed -i '/flutter\.compileSdkVersion/d' android/app/build.gradle
           sed -i '/flutter\.targetSdkVersion/d' android/app/build.gradle
           sed -i '/flutter\.minSdkVersion/d' android/app/build.gradle
+
+      # ── Añadir permiso de Internet y política de red ──
+      - name: Add network permissions to AndroidManifest.xml
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          # Asegurar permiso INTERNET
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+          fi
+          # Habilitar tráfico cleartext (por si acaso)
+          if ! grep -q 'android:usesCleartextTraffic' "$MANIFEST"; then
+            sed -i '/<application/a\        android:usesCleartextTraffic="true"' "$MANIFEST"
+          fi
 
       - name: Install dependencies
         run: flutter pub get
