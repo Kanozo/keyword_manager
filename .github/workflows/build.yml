@@ -20,11 +20,21 @@ jobs:
         with:
           flutter-version: '3.24.5'
 
-      - name: Regenerate Android project
+      - name: Regenerate Android project (clean Gradle)
         run: flutter create --platforms android --project-name keyword_manager .
 
-      - name: Upgrade all dependencies to latest compatible versions
-        run: flutter pub upgrade
+      - name: Force compatible versions of problematic plugins
+        run: |
+          # Añadimos dependency_overrides en pubspec.yaml
+          cat >> pubspec.yaml << 'EOF'
+
+          dependency_overrides:
+            app_links: ^6.5.0
+            package_info_plus: ^8.1.0
+          EOF
+
+      - name: Install dependencies
+        run: flutter pub get
 
       - name: Build APK
         run: |
