@@ -9,11 +9,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Java 11 (requerido por AGP 7.x)
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -23,29 +23,8 @@ jobs:
       - name: Regenerate Android project
         run: flutter create --platforms android --project-name keyword_manager .
 
-      - name: Downgrade to AGP 7.4.2 and Gradle 7.6.3 (compatibles con plugins)
-        run: |
-          # Eliminar caché corrupta
-          rm -rf ~/.gradle/caches
-
-          # Modificar classpath a AGP 7.4.2
-          sed -i "s|classpath 'com.android.tools.build:gradle:.*'|classpath 'com.android.tools.build:gradle:7.4.2'|" android/build.gradle
-
-          # Actualizar Gradle wrapper a 7.6.3
-          sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-7.6.3-bin.zip|' android/gradle/wrapper/gradle-wrapper.properties
-
-          # Reemplazar compileSdkVersion flutter.compileSdkVersion por 33 (máximo para AGP 7.4 sin warnings)
-          sed -i 's|compileSdkVersion flutter.compileSdkVersion|compileSdkVersion 33|' android/app/build.gradle
-
-          # Ajustar targetSdkVersion y minSdkVersion por si acaso
-          sed -i 's|targetSdkVersion flutter.targetSdkVersion|targetSdkVersion 33|' android/app/build.gradle
-          sed -i 's|minSdkVersion flutter.minSdkVersion|minSdkVersion 21|' android/app/build.gradle
-
-      - name: Accept Android licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: Install dependencies
-        run: flutter pub get
+      - name: Upgrade all dependencies to latest compatible versions
+        run: flutter pub upgrade
 
       - name: Build APK
         run: |
