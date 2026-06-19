@@ -23,13 +23,24 @@ jobs:
       - name: Regenerate Android project
         run: flutter create --platforms android --project-name keyword_manager .
 
+      - name: Patch incompatible plugins (app_links, package_info_plus)
+        run: |
+          PUB_CACHE="$HOME/.pub-cache/hosted/pub.dev"
+          # Reemplazar flutter.compileSdkVersion por 34 en todos los plugins que lo usen
+          find "$PUB_CACHE" -name "build.gradle" -exec grep -l 'flutter.compileSdkVersion' {} \; | while read file; do
+            echo "Patching $file"
+            sed -i 's/flutter.compileSdkVersion/34/g' "$file"
+            sed -i 's/flutter.minSdkVersion/21/g' "$file"
+            sed -i 's/flutter.targetSdkVersion/34/g' "$file"
+          done
+
       - name: Force modern Gradle configuration
         run: |
-          # Reemplazar AGP classpath por 8.2.2
+          # AGP classpath a 8.2.2
           sed -i "s|classpath 'com.android.tools.build:gradle:.*'|classpath 'com.android.tools.build:gradle:8.2.2'|" android/build.gradle
-          # Cambiar compileSdkVersion a 34 explícito
+          # compileSdkVersion explícito para la app
           sed -i 's|compileSdkVersion flutter.compileSdkVersion|compileSdkVersion 34|' android/app/build.gradle
-          # Establecer Gradle wrapper a 8.2
+          # Gradle wrapper a 8.2
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.2-bin.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Accept Android licenses
