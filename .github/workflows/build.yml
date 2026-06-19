@@ -23,25 +23,37 @@ jobs:
       - name: Regenerate Android project
         run: flutter create --platforms android --project-name keyword_manager .
 
-      - name: Patch incompatible plugins (app_links, package_info_plus)
+      - name: Configure Gradle for modern plugins
         run: |
-          PUB_CACHE="$HOME/.pub-cache/hosted/pub.dev"
-          # Reemplazar flutter.compileSdkVersion por 34 en todos los plugins que lo usen
-          find "$PUB_CACHE" -name "build.gradle" -exec grep -l 'flutter.compileSdkVersion' {} \; | while read file; do
-            echo "Patching $file"
-            sed -i 's/flutter.compileSdkVersion/34/g' "$file"
-            sed -i 's/flutter.minSdkVersion/21/g' "$file"
-            sed -i 's/flutter.targetSdkVersion/34/g' "$file"
-          done
+          # Limpiar caché corrupta
+          rm -rf ~/.gradle/caches
 
-      - name: Force modern Gradle configuration
-        run: |
-          # AGP classpath a 8.2.2
+          # AGP 8.2.2 y Gradle 8.2
           sed -i "s|classpath 'com.android.tools.build:gradle:.*'|classpath 'com.android.tools.build:gradle:8.2.2'|" android/build.gradle
-          # compileSdkVersion explícito para la app
-          sed -i 's|compileSdkVersion flutter.compileSdkVersion|compileSdkVersion 34|' android/app/build.gradle
-          # Gradle wrapper a 8.2
           sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.2-bin.zip|' android/gradle/wrapper/gradle-wrapper.properties
+
+          # compileSdk 34 explícito en la app
+          sed -i 's|compileSdkVersion flutter.compileSdkVersion|compileSdkVersion 34|' android/app/build.gradle
+
+          # ─── CLAVE: definir ext.flutter en el build.gradle raíz ───
+          # Insertamos un bloque que provee las propiedades que los plugins esperan.
+          # Se añade justo antes del buildscript o al inicio del archivo.
+          cat << 'EOF' > /tmp/flutter_ext.gradle
+          ext {
+              flutter = [
+                  compileSdkVersion: 34,
+                  minSdkVersion    : 21,
+                  targetSdkVersion : 34
+              ]
+          }
+          EOF
+          # Insertamos el contenido después de cualquier línea "buildscript {" o al principio
+          if grep -q "buildscript {" android/build.gradle; then
+              sed -i '/buildscript {/i\ext {\n    flutter = [\n        compileSdkVersion: 34,\n        minSdkVersion    : 21,\n        targetSdkVersion : 34\n    ]\n}\n' android/build.gradle
+          else
+              # Si no hay buildscript (raro), lo ponemos al inicio del archivo
+              sed -i '1i\ext {\n    flutter = [\n        compileSdkVersion: 34,\n        minSdkVersion    : 21,\n        targetSdkVersion : 34\n    ]\n}\n' android/build.gradle
+          fi
 
       - name: Accept Android licenses
         run: yes | sdkmanager --licenses || true
