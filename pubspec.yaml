@@ -13,8 +13,8 @@ dependencies:
   intl: ^0.19.0
 
 dependency_overrides:
-  app_links: any
-  package_info_plus: any
+  app_links: 6.6.0
+  package_info_plus: 8.2.0
 
 dev_dependencies:
   flutter_test:

@@ -26,7 +26,6 @@ jobs:
       - name: Update Kotlin version to 2.1.0
         run: |
           sed -i 's/org.jetbrains.kotlin.android" version "[^"]*"/org.jetbrains.kotlin.android" version "2.1.0"/' android/settings.gradle
-          # Si no se encuentra, lo agrega (por si acaso)
           grep -q 'org.jetbrains.kotlin.android' android/settings.gradle || \
             sed -i '/plugins {/a\    id "org.jetbrains.kotlin.android" version "2.1.0" apply false' android/settings.gradle
 
@@ -38,6 +37,15 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Patch any remaining plugin using flutter.compileSdkVersion
+        run: |
+          find ~/.pub-cache -name "build.gradle" -exec grep -l 'flutter.compileSdkVersion' {} \; | while read file; do
+            echo "Patching $file"
+            sed -i 's/flutter.compileSdkVersion/36/g' "$file"
+            sed -i 's/flutter.targetSdkVersion/36/g' "$file"
+            sed -i 's/flutter.minSdkVersion/21/g' "$file"
+          done
 
       - name: Build APK
         run: |
