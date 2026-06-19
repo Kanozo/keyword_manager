@@ -18,12 +18,12 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: '3.24.5'   # ⚡ Versión más reciente que soporta package_info_plus 9.0.1
 
-      - name: Regenerate platform project (fix Gradle)
+      - name: Regenerate Android project
         run: |
           flutter create --platforms android --project-name keyword_manager .
-          # Esto regenera la carpeta android/ sin tocar lib/, pubspec.yaml, etc.
+          # Esto regenera android/ con la configuración de Gradle actualizada
 
       - name: Accept Android licenses
         run: yes | sdkmanager --licenses || true
