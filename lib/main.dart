@@ -4,9 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Las credenciales se inyectan en compilación (no quedan en el código)
   const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-  const supabaseKey = String.fromEnvironment('SUPABASE_KEY'); // service_role
+  const supabaseKey = String.fromEnvironment('SUPABASE_KEY');
 
   if (supabaseUrl.isEmpty || supabaseKey.isEmpty) {
     runApp(const MaterialApp(
@@ -41,9 +40,6 @@ class KeywordManagerApp extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Modelo simple
-// ─────────────────────────────────────────────────────────────────────────────
 class Keyword {
   final int id;
   final String keyword;
@@ -81,14 +77,10 @@ class Keyword {
       'platform': platform,
       'engine': engine,
       'label': label,
-      // id, scraping, scraped_at no se envían en inserts/updates explícitos
     };
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Pantalla principal – Lista con filtros y CRUD
-// ─────────────────────────────────────────────────────────────────────────────
 class KeywordListScreen extends StatefulWidget {
   const KeywordListScreen({super.key});
 
@@ -99,7 +91,6 @@ class KeywordListScreen extends StatefulWidget {
 class _KeywordListScreenState extends State<KeywordListScreen> {
   final _supabase = Supabase.instance.client;
 
-  // Filtros
   final _searchController = TextEditingController();
   String _filterLabel = '';
   String _filterPlatform = '';
@@ -147,16 +138,16 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
           .order('id', ascending: false)
           .range(_currentPage * _pageSize, (_currentPage + 1) * _pageSize - 1);
 
-      // Aplicar filtros
+      // Aplicar filtros usando filter()
       final search = _searchController.text.trim();
       if (search.isNotEmpty) {
-        query = query.ilike('keyword', '%$search%');
+        query = query.filter('keyword', 'ilike', '%$search%');
       }
       if (_filterLabel.isNotEmpty) {
-        query = query.eq('label', _filterLabel);
+        query = query.filter('label', 'eq', _filterLabel);
       }
       if (_filterPlatform.isNotEmpty) {
-        query = query.eq('platform', _filterPlatform);
+        query = query.filter('platform', 'eq', _filterPlatform);
       }
 
       final data = await query;
@@ -271,11 +262,9 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
 
     try {
       if (existing == null) {
-        // Insertar
         await _supabase.from('keyword').insert(result);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keyword creada')));
       } else {
-        // Actualizar
         await _supabase.from('keyword').update(result).eq('id', existing.id);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keyword actualizada')));
       }
@@ -304,7 +293,7 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
                 value: _filterLabel.isEmpty ? null : _filterLabel,
                 items: [
                   const DropdownMenuItem(value: '', child: Text('Todos')),
-                  ...['IG', 'FB', 'YT', 'TW'] // ejemplos, puedes obtenerlos dinámicamente
+                  ...['IG', 'FB', 'YT', 'TW']
                       .map((l) => DropdownMenuItem(value: l, child: Text(l))),
                 ],
                 onChanged: (val) {
@@ -379,7 +368,7 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
                       itemCount: _keywords.length + (_loading ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (index == _keywords.length) {
-                          _loadKeywords(); // carga más
+                          _loadKeywords();
                           return const Center(child: CircularProgressIndicator());
                         }
                         final kw = _keywords[index];
