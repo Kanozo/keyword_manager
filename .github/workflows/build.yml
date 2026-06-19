@@ -23,6 +23,22 @@ jobs:
       - name: Regenerate Android project
         run: flutter create --platforms android --project-name keyword_manager .
 
+      - name: Force compileSdk 36 and targetSdk 36
+        run: |
+          sed -i 's/compileSdkVersion = flutter.compileSdkVersion/compileSdkVersion = 36/' android/app/build.gradle
+          sed -i 's/targetSdkVersion = flutter.targetSdkVersion/targetSdkVersion = 36/' android/app/build.gradle
+          sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 21/' android/app/build.gradle
+
+      - name: Patch incompatible plugin build.gradle files
+        run: |
+          # Reemplazar flutter.compileSdkVersion por 36 en todos los plugins
+          find ~/.pub-cache -name "build.gradle" -exec grep -l 'flutter.compileSdkVersion' {} \; | while read file; do
+            echo "Patching $file"
+            sed -i 's/flutter.compileSdkVersion/36/g' "$file"
+            sed -i 's/flutter.targetSdkVersion/36/g' "$file"
+            sed -i 's/flutter.minSdkVersion/21/g' "$file"
+          done
+
       - name: Install dependencies
         run: flutter pub get
 
