@@ -18,12 +18,19 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'   # ⚡ Versión más reciente que soporta package_info_plus 9.0.1
+          flutter-version: '3.24.5'
 
       - name: Regenerate Android project
+        run: flutter create --platforms android --project-name keyword_manager .
+
+      - name: Update Gradle configuration for modern plugins
         run: |
-          flutter create --platforms android --project-name keyword_manager .
-          # Esto regenera android/ con la configuración de Gradle actualizada
+          # Cambiar al AGP 8.2.2 (requerido por dependencias recientes)
+          sed -i "s/classpath 'com.android.tools.build:gradle:.*'/classpath 'com.android.tools.build:gradle:8.2.2'/" android/build.gradle
+          # Establecer compileSdk 34
+          sed -i "s/compileSdkVersion = flutter.compileSdkVersion/compileSdkVersion = 34/" android/app/build.gradle
+          # Actualizar Gradle wrapper a 8.2
+          sed -i "s/gradle-.*-bin.zip/gradle-8.2-bin.zip/" android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Accept Android licenses
         run: yes | sdkmanager --licenses || true
