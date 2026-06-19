@@ -9,11 +9,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java 11 (requerido por AGP 7.x)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '11'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -23,37 +23,23 @@ jobs:
       - name: Regenerate Android project
         run: flutter create --platforms android --project-name keyword_manager .
 
-      - name: Configure Gradle for modern plugins
+      - name: Downgrade to AGP 7.4.2 and Gradle 7.6.3 (compatibles con plugins)
         run: |
-          # Limpiar caché corrupta
+          # Eliminar caché corrupta
           rm -rf ~/.gradle/caches
 
-          # AGP 8.2.2 y Gradle 8.2
-          sed -i "s|classpath 'com.android.tools.build:gradle:.*'|classpath 'com.android.tools.build:gradle:8.2.2'|" android/build.gradle
-          sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.2-bin.zip|' android/gradle/wrapper/gradle-wrapper.properties
+          # Modificar classpath a AGP 7.4.2
+          sed -i "s|classpath 'com.android.tools.build:gradle:.*'|classpath 'com.android.tools.build:gradle:7.4.2'|" android/build.gradle
 
-          # compileSdk 34 explícito en la app
-          sed -i 's|compileSdkVersion flutter.compileSdkVersion|compileSdkVersion 34|' android/app/build.gradle
+          # Actualizar Gradle wrapper a 7.6.3
+          sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-7.6.3-bin.zip|' android/gradle/wrapper/gradle-wrapper.properties
 
-          # ─── CLAVE: definir ext.flutter en el build.gradle raíz ───
-          # Insertamos un bloque que provee las propiedades que los plugins esperan.
-          # Se añade justo antes del buildscript o al inicio del archivo.
-          cat << 'EOF' > /tmp/flutter_ext.gradle
-          ext {
-              flutter = [
-                  compileSdkVersion: 34,
-                  minSdkVersion    : 21,
-                  targetSdkVersion : 34
-              ]
-          }
-          EOF
-          # Insertamos el contenido después de cualquier línea "buildscript {" o al principio
-          if grep -q "buildscript {" android/build.gradle; then
-              sed -i '/buildscript {/i\ext {\n    flutter = [\n        compileSdkVersion: 34,\n        minSdkVersion    : 21,\n        targetSdkVersion : 34\n    ]\n}\n' android/build.gradle
-          else
-              # Si no hay buildscript (raro), lo ponemos al inicio del archivo
-              sed -i '1i\ext {\n    flutter = [\n        compileSdkVersion: 34,\n        minSdkVersion    : 21,\n        targetSdkVersion : 34\n    ]\n}\n' android/build.gradle
-          fi
+          # Reemplazar compileSdkVersion flutter.compileSdkVersion por 33 (máximo para AGP 7.4 sin warnings)
+          sed -i 's|compileSdkVersion flutter.compileSdkVersion|compileSdkVersion 33|' android/app/build.gradle
+
+          # Ajustar targetSdkVersion y minSdkVersion por si acaso
+          sed -i 's|targetSdkVersion flutter.targetSdkVersion|targetSdkVersion 33|' android/app/build.gradle
+          sed -i 's|minSdkVersion flutter.minSdkVersion|minSdkVersion 21|' android/app/build.gradle
 
       - name: Accept Android licenses
         run: yes | sdkmanager --licenses || true
