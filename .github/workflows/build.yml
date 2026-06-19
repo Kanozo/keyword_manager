@@ -29,11 +29,17 @@ jobs:
           grep -q 'org.jetbrains.kotlin.android' android/settings.gradle || \
             sed -i '/plugins {/a\    id "org.jetbrains.kotlin.android" version "2.1.0" apply false' android/settings.gradle
 
-      - name: Force compileSdk 36
+      - name: Force compileSdk 36, targetSdk 36, minSdk 23
         run: |
-          sed -i 's/compileSdkVersion = flutter.compileSdkVersion/compileSdkVersion = 36/' android/app/build.gradle
-          sed -i 's/targetSdkVersion = flutter.targetSdkVersion/targetSdkVersion = 36/' android/app/build.gradle
-          sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 21/' android/app/build.gradle
+          # Reemplazar las líneas completas que contengan estas propiedades
+          sed -i 's/^.*compileSdkVersion.*/compileSdkVersion 36/' android/app/build.gradle
+          sed -i 's/^.*targetSdkVersion.*/targetSdkVersion 36/' android/app/build.gradle
+          sed -i 's/^.*minSdkVersion.*/minSdkVersion 23/' android/app/build.gradle
+
+          # Si después del reemplazo queda alguna línea usando flutter.compileSdkVersion, la eliminamos
+          sed -i '/flutter\.compileSdkVersion/d' android/app/build.gradle
+          sed -i '/flutter\.targetSdkVersion/d' android/app/build.gradle
+          sed -i '/flutter\.minSdkVersion/d' android/app/build.gradle
 
       - name: Install dependencies
         run: flutter pub get
@@ -44,7 +50,7 @@ jobs:
             echo "Patching $file"
             sed -i 's/flutter.compileSdkVersion/36/g' "$file"
             sed -i 's/flutter.targetSdkVersion/36/g' "$file"
-            sed -i 's/flutter.minSdkVersion/21/g' "$file"
+            sed -i 's/flutter.minSdkVersion/23/g' "$file"
           done
 
       - name: Build APK
