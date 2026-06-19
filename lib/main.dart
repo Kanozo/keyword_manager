@@ -95,8 +95,8 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
   String _filterLabel = '';
   String _filterPlatform = '';
 
-  List<Keyword> _allKeywords = [];      // todas las keywords cargadas
-  List<Keyword> _filteredKeywords = []; // resultado del filtro local
+  List<Keyword> _allKeywords = [];
+  List<Keyword> _filteredKeywords = [];
   bool _loading = false;
 
   @override
@@ -115,7 +115,6 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
   Future<void> _loadAllKeywords() async {
     setState(() => _loading = true);
     try {
-      // Cargar todas las keywords de una vez (admin local, pocos datos)
       final data = await _supabase
           .from('keyword')
           .select()
@@ -159,8 +158,12 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
         title: const Text('Eliminar keyword'),
         content: Text('¿Eliminar "${kw.keyword}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Eliminar')),
         ],
       ),
     );
@@ -182,9 +185,11 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
   Future<void> _showEditDialog({Keyword? existing}) async {
     final formKey = GlobalKey<FormState>();
     final kwController = TextEditingController(text: existing?.keyword ?? '');
-    final platformController = TextEditingController(text: existing?.platform ?? '');
+    final platformController =
+        TextEditingController(text: existing?.platform ?? '');
     final labelController = TextEditingController(text: existing?.label ?? '');
-    final engineController = TextEditingController(text: existing?.engine ?? '');
+    final engineController =
+        TextEditingController(text: existing?.engine ?? '');
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -200,7 +205,8 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
                   TextFormField(
                     controller: kwController,
                     decoration: const InputDecoration(labelText: 'Keyword *'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Requerido' : null,
                   ),
                   TextFormField(
                     controller: platformController,
@@ -219,15 +225,23 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar')),
             ElevatedButton(
               onPressed: () {
                 if (formKey.currentState!.validate()) {
                   Navigator.pop(ctx, {
                     'keyword': kwController.text.trim(),
-                    'platform': platformController.text.trim().isEmpty ? null : platformController.text.trim(),
-                    'label': labelController.text.trim().isEmpty ? null : labelController.text.trim(),
-                    'engine': engineController.text.trim().isEmpty ? null : engineController.text.trim(),
+                    'platform': platformController.text.trim().isEmpty
+                        ? null
+                        : platformController.text.trim(),
+                    'label': labelController.text.trim().isEmpty
+                        ? null
+                        : labelController.text.trim(),
+                    'engine': engineController.text.trim().isEmpty
+                        ? null
+                        : engineController.text.trim(),
                   });
                 }
               },
@@ -246,11 +260,50 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
       } else {
         await _supabase.from('keyword').update(result).eq('id', existing.id);
       }
-      _loadAllKeywords(); // recargar todo tras cambio
+      _loadAllKeywords();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _resetScrapingFlags() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset scraping'),
+        content: const Text(
+            '¿Estás seguro de poner scraping = false en todas las keywords que están en true?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reset')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      await _supabase
+          .from('keyword')
+          .update({'scraping': false})
+          .eq('scraping', true);
+      _loadAllKeywords(); // recargar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Scraping flags reseteados')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al resetear: $e')),
         );
       }
     }
@@ -266,7 +319,8 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Filtrar por Label', style: Theme.of(context).textTheme.titleMedium),
+              Text('Filtrar por Label',
+                  style: Theme.of(context).textTheme.titleMedium),
               DropdownButtonFormField<String>(
                 value: _filterLabel.isEmpty ? null : _filterLabel,
                 items: [
@@ -280,13 +334,16 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
                 },
               ),
               const SizedBox(height: 12),
-              Text('Filtrar por Platform', style: Theme.of(context).textTheme.titleMedium),
+              Text('Filtrar por Platform',
+                  style: Theme.of(context).textTheme.titleMedium),
               DropdownButtonFormField<String>(
                 value: _filterPlatform.isEmpty ? null : _filterPlatform,
                 items: [
                   const DropdownMenuItem(value: '', child: Text('Todas')),
-                  const DropdownMenuItem(value: 'facebook', child: Text('Facebook')),
-                  const DropdownMenuItem(value: 'instagram', child: Text('Instagram')),
+                  const DropdownMenuItem(
+                      value: 'facebook', child: Text('Facebook')),
+                  const DropdownMenuItem(
+                      value: 'instagram', child: Text('Instagram')),
                 ],
                 onChanged: (val) {
                   setState(() => _filterPlatform = val ?? '');
@@ -322,15 +379,41 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
             icon: const Icon(Icons.filter_list),
             onPressed: _showFilterOptions,
           ),
+          PopupMenuButton<String>(
+            onSelected: (action) {
+              if (action == 'reset_scraping') _resetScrapingFlags();
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'reset_scraping',
+                child: Text('Reset scraping'),
+              ),
+            ],
+          ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _filteredKeywords.isEmpty
-              ? const Center(child: Text('Sin resultados'))
-              : RefreshIndicator(
-                  onRefresh: _loadAllKeywords,
-                  child: ListView.builder(
+      body: RefreshIndicator(
+        onRefresh: _loadAllKeywords,
+        child: _loading
+            ? ListView(
+                // Para que el RefreshIndicator funcione, necesitamos un scrollable
+                children: const [
+                  SizedBox(
+                    height: 200,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ],
+              )
+            : _filteredKeywords.isEmpty
+                ? ListView(
+                    children: const [
+                      SizedBox(
+                        height: 200,
+                        child: Center(child: Text('Sin resultados')),
+                      ),
+                    ],
+                  )
+                : ListView.builder(
                     itemCount: _filteredKeywords.length,
                     itemBuilder: (context, index) {
                       final kw = _filteredKeywords[index];
@@ -342,19 +425,22 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
                           ),
                           trailing: PopupMenuButton<String>(
                             onSelected: (action) {
-                              if (action == 'edit') _showEditDialog(existing: kw);
+                              if (action == 'edit')
+                                _showEditDialog(existing: kw);
                               if (action == 'delete') _deleteKeyword(kw);
                             },
                             itemBuilder: (ctx) => [
-                              const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                              const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+                              const PopupMenuItem(
+                                  value: 'edit', child: Text('Editar')),
+                              const PopupMenuItem(
+                                  value: 'delete', child: Text('Eliminar')),
                             ],
                           ),
                         ),
                       );
                     },
                   ),
-                ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showEditDialog(),
         child: const Icon(Icons.add),
