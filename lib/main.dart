@@ -95,17 +95,15 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
   String _filterLabel = '';
   String _filterPlatform = '';
 
-  List<Keyword> _keywords = [];
+  List<Keyword> _allKeywords = [];      // todas las keywords cargadas
+  List<Keyword> _filteredKeywords = []; // resultado del filtro local
   bool _loading = false;
-  bool _hasMore = true;
-  static const int _pageSize = 20;
-  int _currentPage = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadKeywords(reset: true);
-    _searchController.addListener(_onSearchChanged);
+    _loadAllKeywords();
+    _searchController.addListener(_applyFilters);
   }
 
   @override
@@ -114,63 +112,44 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
     super.dispose();
   }
 
-  void _onSearchChanged() {
-    _loadKeywords(reset: true);
-  }
-
-  Future<void> _loadKeywords({bool reset = false}) async {
-    if (_loading) return;
-    if (reset) {
-      setState(() {
-        _currentPage = 0;
-        _keywords = [];
-        _hasMore = true;
-      });
-    }
-    if (!_hasMore) return;
-
+  Future<void> _loadAllKeywords() async {
     setState(() => _loading = true);
-
     try {
-      var query = _supabase
+      // Cargar todas las keywords de una vez (admin local, pocos datos)
+      final data = await _supabase
           .from('keyword')
           .select()
-          .order('id', ascending: false)
-          .range(_currentPage * _pageSize, (_currentPage + 1) * _pageSize - 1);
+          .order('id', ascending: false);
 
-      // Aplicar filtros usando filter()
-      final search = _searchController.text.trim();
-      if (search.isNotEmpty) {
-        query = query.filter('keyword', 'ilike', '%$search%');
-      }
-      if (_filterLabel.isNotEmpty) {
-        query = query.filter('label', 'eq', _filterLabel);
-      }
-      if (_filterPlatform.isNotEmpty) {
-        query = query.filter('platform', 'eq', _filterPlatform);
-      }
-
-      final data = await query;
-      final newKeywords = (data as List).map((e) => Keyword.fromMap(e)).toList();
-
-      setState(() {
-        if (reset) {
-          _keywords = newKeywords;
-        } else {
-          _keywords.addAll(newKeywords);
-        }
-        _hasMore = newKeywords.length == _pageSize;
-        _currentPage++;
-        _loading = false;
-      });
+      _allKeywords = (data as List).map((e) => Keyword.fromMap(e)).toList();
+      _applyFilters();
     } catch (e) {
-      setState(() => _loading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al cargar: $e')),
         );
       }
+    } finally {
+      setState(() => _loading = false);
     }
+  }
+
+  void _applyFilters() {
+    final search = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _filteredKeywords = _allKeywords.where((kw) {
+        if (search.isNotEmpty && !kw.keyword.toLowerCase().contains(search)) {
+          return false;
+        }
+        if (_filterLabel.isNotEmpty && kw.label != _filterLabel) {
+          return false;
+        }
+        if (_filterPlatform.isNotEmpty && kw.platform != _filterPlatform) {
+          return false;
+        }
+        return true;
+      }).toList();
+    });
   }
 
   Future<void> _deleteKeyword(Keyword kw) async {
@@ -189,7 +168,8 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
 
     try {
       await _supabase.from('keyword').delete().eq('id', kw.id);
-      setState(() => _keywords.removeWhere((k) => k.id == kw.id));
+      _allKeywords.removeWhere((k) => k.id == kw.id);
+      _applyFilters();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -263,12 +243,10 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
     try {
       if (existing == null) {
         await _supabase.from('keyword').insert(result);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keyword creada')));
       } else {
         await _supabase.from('keyword').update(result).eq('id', existing.id);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keyword actualizada')));
       }
-      _loadKeywords(reset: true);
+      _loadAllKeywords(); // recargar todo tras cambio
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -298,7 +276,7 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
                 ],
                 onChanged: (val) {
                   setState(() => _filterLabel = val ?? '');
-                  _loadKeywords(reset: true);
+                  _applyFilters();
                 },
               ),
               const SizedBox(height: 12),
@@ -312,7 +290,7 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
                 ],
                 onChanged: (val) {
                   setState(() => _filterPlatform = val ?? '');
-                  _loadKeywords(reset: true);
+                  _applyFilters();
                 },
               ),
               const SizedBox(height: 16),
@@ -323,7 +301,7 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
                     _filterLabel = '';
                     _filterPlatform = '';
                   });
-                  _loadKeywords(reset: true);
+                  _applyFilters();
                 },
                 child: const Text('Limpiar filtros'),
               ),
@@ -346,56 +324,37 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                labelText: 'Buscar keyword',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async => _loadKeywords(reset: true),
-              child: _keywords.isEmpty && !_loading
-                  ? const Center(child: Text('Sin resultados'))
-                  : ListView.builder(
-                      itemCount: _keywords.length + (_loading ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == _keywords.length) {
-                          _loadKeywords();
-                          return const Center(child: CircularProgressIndicator());
-                        }
-                        final kw = _keywords[index];
-                        return Card(
-                          child: ListTile(
-                            title: Text(kw.keyword),
-                            subtitle: Text(
-                              'Label: ${kw.label ?? '-'} | Platform: ${kw.platform ?? '-'}',
-                            ),
-                            trailing: PopupMenuButton<String>(
-                              onSelected: (action) {
-                                if (action == 'edit') _showEditDialog(existing: kw);
-                                if (action == 'delete') _deleteKeyword(kw);
-                              },
-                              itemBuilder: (ctx) => [
-                                const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                                const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
-                              ],
-                            ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _filteredKeywords.isEmpty
+              ? const Center(child: Text('Sin resultados'))
+              : RefreshIndicator(
+                  onRefresh: _loadAllKeywords,
+                  child: ListView.builder(
+                    itemCount: _filteredKeywords.length,
+                    itemBuilder: (context, index) {
+                      final kw = _filteredKeywords[index];
+                      return Card(
+                        child: ListTile(
+                          title: Text(kw.keyword),
+                          subtitle: Text(
+                            'Label: ${kw.label ?? '-'} | Platform: ${kw.platform ?? '-'}',
                           ),
-                        );
-                      },
-                    ),
-            ),
-          ),
-        ],
-      ),
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (action) {
+                              if (action == 'edit') _showEditDialog(existing: kw);
+                              if (action == 'delete') _deleteKeyword(kw);
+                            },
+                            itemBuilder: (ctx) => [
+                              const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                              const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showEditDialog(),
         child: const Icon(Icons.add),
