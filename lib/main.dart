@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,7 +14,8 @@ void main() async {
         body: Center(
           child: Text(
             'Error: Debes definir SUPABASE_URL y SUPABASE_KEY\n'
-            'Ejemplo: flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_KEY=...',
+            'Ejemplo: flutter build apk '
+            '--dart-define=SUPABASE_URL=... --dart-define=SUPABASE_KEY=...',
           ),
         ),
       ),
@@ -25,6 +27,9 @@ void main() async {
   runApp(const KeywordManagerApp());
 }
 
+// ─────────────────────────────────────────────
+// App
+// ─────────────────────────────────────────────
 class KeywordManagerApp extends StatelessWidget {
   const KeywordManagerApp({super.key});
 
@@ -32,55 +37,52 @@ class KeywordManagerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Keyword Manager',
-      theme: ThemeData.dark().copyWith(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF00BFA5),
+          brightness: Brightness.dark,
+        ),
       ),
       home: const KeywordListScreen(),
     );
   }
 }
 
+// ─────────────────────────────────────────────
+// Modelo — solo los campos que existen en la tabla
+// ─────────────────────────────────────────────
 class Keyword {
   final int id;
-  final String keyword;
-  final String? platform;
-  final String? engine;
-  final String? label;
-  final bool scraping;
-  final DateTime scrapedAt;
+  final String term;
+  final DateTime? scrapedAt;
+  final DateTime? createdAt;
 
-  Keyword({
+  const Keyword({
     required this.id,
-    required this.keyword,
-    this.platform,
-    this.engine,
-    this.label,
-    this.scraping = false,
-    required this.scrapedAt,
+    required this.term,
+    this.scrapedAt,
+    this.createdAt,
   });
 
   factory Keyword.fromMap(Map<String, dynamic> map) {
     return Keyword(
       id: map['id'] as int,
-      keyword: map['keyword'] as String,
-      platform: map['platform'] as String?,
-      engine: map['engine'] as String?,
-      label: map['label'] as String?,
-      scraping: map['scraping'] as bool? ?? false,
-      scrapedAt: DateTime.parse(map['scraped_at'] as String),
+      term: map['term'] as String,
+      scrapedAt: map['scraped_at'] != null
+          ? DateTime.parse(map['scraped_at'] as String)
+          : null,
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
+          : null,
     );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'keyword': keyword,
-      'platform': platform,
-      'engine': engine,
-      'label': label,
-    };
   }
 }
 
+// ─────────────────────────────────────────────
+// Pantalla principal
+// ─────────────────────────────────────────────
 class KeywordListScreen extends StatefulWidget {
   const KeywordListScreen({super.key});
 
@@ -90,20 +92,18 @@ class KeywordListScreen extends StatefulWidget {
 
 class _KeywordListScreenState extends State<KeywordListScreen> {
   final _supabase = Supabase.instance.client;
-
   final _searchController = TextEditingController();
-  String _filterLabel = '';
-  String _filterPlatform = '';
+  final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 
   List<Keyword> _allKeywords = [];
-  List<Keyword> _filteredKeywords = [];
+  List<Keyword> _filtered = [];
   bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadAllKeywords();
-    _searchController.addListener(_applyFilters);
+    _loadKeywords();
+    _searchController.addListener(_applySearch);
   }
 
   @override
@@ -112,339 +112,304 @@ class _KeywordListScreenState extends State<KeywordListScreen> {
     super.dispose();
   }
 
-  Future<void> _loadAllKeywords() async {
+  // ── CRUD ──────────────────────────────────
+
+  Future<void> _loadKeywords() async {
     setState(() => _loading = true);
     try {
       final data = await _supabase
-          .from('keyword')
+          .from('keywords')          // ← tabla correcta
           .select()
           .order('id', ascending: false);
 
-      _allKeywords = (data as List).map((e) => Keyword.fromMap(e)).toList();
-      _applyFilters();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar: $e')),
-        );
-      }
+      _allKeywords = (data as List)
+          .map((row) => Keyword.fromMap(row as Map<String, dynamic>))
+          .toList();
+      _applySearch();
+    } on Exception catch (e) {
+      _showSnack('Error al cargar: $e');
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _applyFilters() {
-    final search = _searchController.text.trim().toLowerCase();
-    setState(() {
-      _filteredKeywords = _allKeywords.where((kw) {
-        if (search.isNotEmpty && !kw.keyword.toLowerCase().contains(search)) {
-          return false;
-        }
-        if (_filterLabel.isNotEmpty && kw.label != _filterLabel) {
-          return false;
-        }
-        if (_filterPlatform.isNotEmpty && kw.platform != _filterPlatform) {
-          return false;
-        }
-        return true;
-      }).toList();
-    });
+  Future<void> _createKeyword(String term) async {
+    try {
+      await _supabase.from('keywords').insert({'term': term});
+      await _loadKeywords();
+    } on Exception catch (e) {
+      _showSnack('Error al crear: $e');
+    }
+  }
+
+  Future<void> _updateKeyword(int id, String newTerm) async {
+    try {
+      await _supabase
+          .from('keywords')
+          .update({'term': newTerm})
+          .eq('id', id);
+      await _loadKeywords();
+    } on Exception catch (e) {
+      _showSnack('Error al actualizar: $e');
+    }
   }
 
   Future<void> _deleteKeyword(Keyword kw) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar keyword'),
-        content: Text('¿Eliminar "${kw.keyword}"?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Eliminar')),
-        ],
-      ),
+    final confirmed = await _confirmDialog(
+      title: 'Eliminar keyword',
+      content: '¿Eliminar "${kw.term}"?',
     );
-    if (confirm != true) return;
+    if (!confirmed) return;
 
     try {
-      await _supabase.from('keyword').delete().eq('id', kw.id);
+      await _supabase.from('keywords').delete().eq('id', kw.id);
       _allKeywords.removeWhere((k) => k.id == kw.id);
-      _applyFilters();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al eliminar: $e')),
-        );
-      }
+      _applySearch();
+    } on Exception catch (e) {
+      _showSnack('Error al eliminar: $e');
     }
   }
 
-  Future<void> _showEditDialog({Keyword? existing}) async {
-    final formKey = GlobalKey<FormState>();
-    final kwController = TextEditingController(text: existing?.keyword ?? '');
-    final platformController =
-        TextEditingController(text: existing?.platform ?? '');
-    final labelController = TextEditingController(text: existing?.label ?? '');
-    final engineController =
-        TextEditingController(text: existing?.engine ?? '');
+  // ── UI helpers ────────────────────────────
 
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(existing == null ? 'Nueva keyword' : 'Editar keyword'),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: kwController,
-                    decoration: const InputDecoration(labelText: 'Keyword *'),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Requerido' : null,
-                  ),
-                  TextFormField(
-                    controller: platformController,
-                    decoration: const InputDecoration(labelText: 'Platform'),
-                  ),
-                  TextFormField(
-                    controller: labelController,
-                    decoration: const InputDecoration(labelText: 'Label'),
-                  ),
-                  TextFormField(
-                    controller: engineController,
-                    decoration: const InputDecoration(labelText: 'Engine'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancelar')),
-            ElevatedButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) {
-                  Navigator.pop(ctx, {
-                    'keyword': kwController.text.trim(),
-                    'platform': platformController.text.trim().isEmpty
-                        ? null
-                        : platformController.text.trim(),
-                    'label': labelController.text.trim().isEmpty
-                        ? null
-                        : labelController.text.trim(),
-                    'engine': engineController.text.trim().isEmpty
-                        ? null
-                        : engineController.text.trim(),
-                  });
-                }
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (result == null) return;
-
-    try {
-      if (existing == null) {
-        await _supabase.from('keyword').insert(result);
-      } else {
-        await _supabase.from('keyword').update(result).eq('id', existing.id);
-      }
-      _loadAllKeywords();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
+  void _applySearch() {
+    final query = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _filtered = query.isEmpty
+          ? List.from(_allKeywords)
+          : _allKeywords
+              .where((kw) => kw.term.toLowerCase().contains(query))
+              .toList();
+    });
   }
 
-  Future<void> _resetScrapingFlags() async {
-    final confirm = await showDialog<bool>(
+  void _showSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<bool> _confirmDialog({
+    required String title,
+    required String content,
+  }) async {
+    final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Reset scraping'),
-        content: const Text(
-            '¿Estás seguro de poner scraping = false en todas las keywords que están en true?'),
+        title: Text(title),
+        content: Text(content),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Reset')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirmar'),
+          ),
         ],
       ),
     );
-    if (confirm != true) return;
+    return result ?? false;
+  }
 
-    try {
-      await _supabase
-          .from('keyword')
-          .update({'scraping': false})
-          .eq('scraping', true);
-      _loadAllKeywords(); // recargar
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Scraping flags reseteados')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al resetear: $e')),
-        );
-      }
+  Future<void> _showTermDialog({Keyword? existing}) async {
+    final controller = TextEditingController(text: existing?.term ?? '');
+    final formKey = GlobalKey<FormState>();
+
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(existing == null ? 'Nueva keyword' : 'Editar keyword'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Término *',
+              hintText: 'ej: flutter tutorial',
+              border: OutlineInputBorder(),
+            ),
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? 'El término es obligatorio' : null,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) {
+              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+
+    if (submitted != true) return;
+    final term = controller.text.trim();
+
+    if (existing == null) {
+      await _createKeyword(term);
+    } else {
+      await _updateKeyword(existing.id, term);
     }
   }
 
-  void _showFilterOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Filtrar por Label',
-                  style: Theme.of(context).textTheme.titleMedium),
-              DropdownButtonFormField<String>(
-                value: _filterLabel.isEmpty ? null : _filterLabel,
-                items: [
-                  const DropdownMenuItem(value: '', child: Text('Todos')),
-                  ...['IG', 'FB', 'YT', 'TW']
-                      .map((l) => DropdownMenuItem(value: l, child: Text(l))),
-                ],
-                onChanged: (val) {
-                  setState(() => _filterLabel = val ?? '');
-                  _applyFilters();
-                },
-              ),
-              const SizedBox(height: 12),
-              Text('Filtrar por Platform',
-                  style: Theme.of(context).textTheme.titleMedium),
-              DropdownButtonFormField<String>(
-                value: _filterPlatform.isEmpty ? null : _filterPlatform,
-                items: [
-                  const DropdownMenuItem(value: '', child: Text('Todas')),
-                  const DropdownMenuItem(
-                      value: 'facebook', child: Text('Facebook')),
-                  const DropdownMenuItem(
-                      value: 'instagram', child: Text('Instagram')),
-                ],
-                onChanged: (val) {
-                  setState(() => _filterPlatform = val ?? '');
-                  _applyFilters();
-                },
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  setState(() {
-                    _filterLabel = '';
-                    _filterPlatform = '';
-                  });
-                  _applyFilters();
-                },
-                child: const Text('Limpiar filtros'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  // ── Build ─────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Keywords'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterOptions,
+        title: const Text('Keyword Manager'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: SearchBar(
+              controller: _searchController,
+              hintText: 'Buscar keyword…',
+              leading: const Icon(Icons.search),
+              trailing: [
+                if (_searchController.text.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
+                      _applySearch();
+                    },
+                  ),
+              ],
+            ),
           ),
-          PopupMenuButton<String>(
-            onSelected: (action) {
-              if (action == 'reset_scraping') _resetScrapingFlags();
-            },
-            itemBuilder: (ctx) => [
-              const PopupMenuItem(
-                value: 'reset_scraping',
-                child: Text('Reset scraping'),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
       body: RefreshIndicator(
-        onRefresh: _loadAllKeywords,
+        onRefresh: _loadKeywords,
         child: _loading
-            ? ListView(
-                // Para que el RefreshIndicator funcione, necesitamos un scrollable
-                children: const [
-                  SizedBox(
-                    height: 200,
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                ],
-              )
-            : _filteredKeywords.isEmpty
-                ? ListView(
-                    children: const [
-                      SizedBox(
-                        height: 200,
-                        child: Center(child: Text('Sin resultados')),
-                      ),
-                    ],
-                  )
-                : ListView.builder(
-                    itemCount: _filteredKeywords.length,
-                    itemBuilder: (context, index) {
-                      final kw = _filteredKeywords[index];
-                      return Card(
-                        child: ListTile(
-                          title: Text(kw.keyword),
-                          subtitle: Text(
-                            'Label: ${kw.label ?? '-'} | Platform: ${kw.platform ?? '-'}',
-                          ),
-                          trailing: PopupMenuButton<String>(
-                            onSelected: (action) {
-                              if (action == 'edit')
-                                _showEditDialog(existing: kw);
-                              if (action == 'delete') _deleteKeyword(kw);
-                            },
-                            itemBuilder: (ctx) => [
-                              const PopupMenuItem(
-                                  value: 'edit', child: Text('Editar')),
-                              const PopupMenuItem(
-                                  value: 'delete', child: Text('Eliminar')),
-                            ],
+            ? const Center(child: CircularProgressIndicator())
+            : _filtered.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.search_off,
+                            size: 64,
+                            color: colorScheme.onSurface.withOpacity(0.3)),
+                        const SizedBox(height: 12),
+                        Text(
+                          _allKeywords.isEmpty
+                              ? 'Sin keywords. Añade una con +'
+                              : 'Sin resultados para esa búsqueda',
+                          style: TextStyle(
+                            color: colorScheme.onSurface.withOpacity(0.5),
                           ),
                         ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _filtered.length,
+                    itemBuilder: (_, index) {
+                      final kw = _filtered[index];
+                      return _KeywordTile(
+                        keyword: kw,
+                        dateFmt: _dateFmt,
+                        onEdit: () => _showTermDialog(existing: kw),
+                        onDelete: () => _deleteKeyword(kw),
                       );
                     },
                   ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showEditDialog(),
-        child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showTermDialog(),
+        icon: const Icon(Icons.add),
+        label: const Text('Añadir'),
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────
+// Widget de fila
+// ─────────────────────────────────────────────
+class _KeywordTile extends StatelessWidget {
+  final Keyword keyword;
+  final DateFormat dateFmt;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _KeywordTile({
+    required this.keyword,
+    required this.dateFmt,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final scrapedLabel = keyword.scrapedAt != null
+        ? 'Scrapeado: ${dateFmt.format(keyword.scrapedAt!.toLocal())}'
+        : 'Sin scrapear';
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        title: Text(
+          keyword.term,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          scrapedLabel,
+          style: TextStyle(
+            fontSize: 12,
+            color: keyword.scrapedAt != null
+                ? colorScheme.primary
+                : colorScheme.onSurface.withOpacity(0.45),
+          ),
+        ),
+        trailing: PopupMenuButton<_Action>(
+          onSelected: (action) {
+            if (action == _Action.edit) onEdit();
+            if (action == _Action.delete) onDelete();
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+              value: _Action.edit,
+              child: ListTile(
+                leading: Icon(Icons.edit_outlined),
+                title: Text('Editar'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: _Action.delete,
+              child: ListTile(
+                leading: Icon(Icons.delete_outline),
+                title: Text('Eliminar'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _Action { edit, delete }
